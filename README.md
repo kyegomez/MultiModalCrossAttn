@@ -13,13 +13,10 @@ The open source implementation of the cross attention mechanism from the paper: 
 
 
 # Install
-
+`pip install cross-attn`
 
 # Usage
 
-# Architecture
-
-# Todo
 
 
 # License

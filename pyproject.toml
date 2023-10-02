@@ -3,8 +3,8 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "MultiModalCrossAttn"
-version = "0.0.1"
+name = 'cross-attn'
+version = "0.0.2"
 description = "MultiModalCrossAttn - Pytorch"
 license = "MIT"
 authors = ["Kye Gomez <kye@apac.ai>"]
@@ -19,6 +19,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.6"
+]
+packages = [
+    { include = "cross_attn" },
+    { include = "cross_attn/**/*.py" },
 ]
 
 [tool.poetry.dependencies]

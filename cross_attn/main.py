@@ -1,22 +1,34 @@
+import torch
 import torch.nn as nn
-from cross_attn.attend import Attend
+from cross_attn.flash import FlashAttention
+
+
+
+
 
 class MultiModalCrossAttn(nn.Module):
     """
     Cross attention module for multi-modal (text and image) attention.
     """
-    def __init__(self, dim: int, heads: int, dropout: float = 0.1, causal: bool = True, flash: bool = True):
+    def __init__(
+        self, 
+        dim: int, 
+        heads: int, 
+        dropout: float = 0.1, 
+        causal: bool = True, 
+        flash: bool = True
+    ):
         super().__init__()
 
         self.to_query = nn.Linear(dim, dim * heads)
         self.to_key = nn.Linear(dim, dim * heads)
         self.to_value = nn.Linear(dim, dim * heads)
         
-        self.attend = Attend(
-            heads=heads,
-            dropout=dropout,
-            causal=causal,
-            flash=flash
+
+        self.attend = FlashAttention(
+            # causal=causal,
+            # dropout=dropout,
+            # flash=flash
         )
 
     def forward(self, text_features, image_features):
@@ -38,3 +50,8 @@ class MultiModalCrossAttn(nn.Module):
         cross_attn_out = self.attend(queries, keys, values)
         
         return cross_attn_out
+
+
+
+
+
