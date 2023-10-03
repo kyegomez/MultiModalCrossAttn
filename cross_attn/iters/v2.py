@@ -59,7 +59,13 @@ class MultiModalCrossAttention(nn.Module):
             #rearrange to original shape
             # attn_weights = rearrange(out, 'b h n d -> b n (h d)'
         print(f"attn_weights shape: {attn_weights.shape}, and vcross shape: {Vcross.shape}")
+        
+        # what does the @ symbol mean? 
+        # It's matrix multiplication
+        # https://stackoverflow.com/questions/34142485/difference-between-numpy-dot-and-python-3-5-matrix-multiplication
         # Hcross = attn_weights @ Vcross
+
+        # New code
         Hcross = attn_weights + Vcross
         
         # Tllm -> Timg (Symmetric process)
@@ -77,7 +83,11 @@ class MultiModalCrossAttention(nn.Module):
 
             #rearrange to original shape
             # attn_weights_reverse = rearrange(out, 'b h n d -> b n (h d)')
-
+        
+        #old code
+        # Hcross_reverse = attn_weights_reverse @ Vcross_reverse
+        
+        #new code  
         Hcross_reverse = attn_weights_reverse + Vcross_reverse
         
         # Concatenate the results
@@ -95,5 +105,6 @@ cross_attn = MultiModalCrossAttention(dim, num_heads)
 Hllm_sample = torch.randn(32, 10, dim)  # Batch size = 32, Sequence length = 10
 Himg_sample = torch.randn(32, 10, dim)
 output = cross_attn(Hllm_sample, Himg_sample)
+print(output)
 
 print(output.shape)  # Expected: [32, 10, 512]
