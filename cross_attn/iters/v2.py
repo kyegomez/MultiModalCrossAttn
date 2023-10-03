@@ -44,7 +44,6 @@ class MultiModalCrossAttention(nn.Module):
         
         # Compute attention weights, why is Kcross being transposed? 
         # Because we want to multiply the query with the key, and the key has to be transposed
-
         # Original code
         # attn_weights = F.softmax(Qcross @ Kcross.transpose(-2, -1) / torch.sqrt(torch.tensor(self.dk).float()), dim=-1)
         
@@ -54,19 +53,21 @@ class MultiModalCrossAttention(nn.Module):
             attn_weights = F.scaled_dot_product_attention(Qcross, Kcross, Vcross)
             
             #dropout
-            # out = self.dropout(out)
+            # attn_weights = self.dropout(attn_weights)
 
             #rearrange to original shape
             # attn_weights = rearrange(out, 'b h n d -> b n (h d)'
+
         print(f"attn_weights shape: {attn_weights.shape}, and vcross shape: {Vcross.shape}")
         
         # what does the @ symbol mean? 
         # It's matrix multiplication
         # https://stackoverflow.com/questions/34142485/difference-between-numpy-dot-and-python-3-5-matrix-multiplication
         # Hcross = attn_weights @ Vcross
-
         # New code
-        Hcross = attn_weights + Vcross
+        # Hcross = attn_weights + Vcross
+        #newest code
+        Hcross = torch.matmul(attn_weights, Vcross)
         
         # Tllm -> Timg (Symmetric process)
         Qcross_reverse = self.Wq_reverse(Himg)
@@ -86,9 +87,10 @@ class MultiModalCrossAttention(nn.Module):
         
         #old code
         # Hcross_reverse = attn_weights_reverse @ Vcross_reverse
-        
         #new code  
-        Hcross_reverse = attn_weights_reverse + Vcross_reverse
+        # Hcross_reverse = attn_weights_reverse + Vcross_reverse
+        #newest code
+        Hcross_reverse = torch.matmul(attn_weights_reverse, Vcross_reverse)
         
         # Concatenate the results
         output = torch.cat((Hcross, Hcross_reverse), dim=-1)
@@ -102,8 +104,8 @@ class MultiModalCrossAttention(nn.Module):
 dim = 512  # For example
 num_heads = 8
 cross_attn = MultiModalCrossAttention(dim, num_heads)
-Hllm_sample = torch.randn(32, 10, dim)  # Batch size = 32, Sequence length = 10
-Himg_sample = torch.randn(32, 10, dim)
+Hllm_sample = torch.randn(32, 512, dim)  # Batch size = 32, Sequence length = 10
+Himg_sample = torch.randn(32, 512, dim)
 output = cross_attn(Hllm_sample, Himg_sample)
 print(output)
 
