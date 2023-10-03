@@ -1,102 +1,149 @@
-# import torch
-# import torch.nn as nn
-# from cross_attn.attend import Attention
-
-
-
-
-
-# class MultiModalCrossAttn(nn.Module):
-#     """
-#     Cross attention module for multi-modal (text and image) attention.
-#     """
-#     def __init__(
-#         self, 
-#         dim: int, 
-#         heads: int, 
-#         dropout: float = 0.1, 
-#         causal: bool = True, 
-#         flash: bool = True
-#     ):
-#         super().__init__()
-
-#         self.to_query = nn.Linear(dim, dim * heads)
-#         self.to_key = nn.Linear(dim, dim * heads)
-#         self.to_value = nn.Linear(dim, dim * heads)
-        
-#         self.attend = Attention(dropout, causal, flash)
-
-#     def forward(self, text_features, image_features):
-#         """
-#         Forward pass for cross attention.
-        
-#         Args:
-#         - text_features (torch.Tensor): Text features for the cross attention.
-#         - image_features (torch.Tensor): Image features for the cross attention.
-
-#         Returns:
-#         - cross_attn_out (torch.Tensor): Output after applying cross attention.
-#         """
-        
-#         queries = self.to_query(text_features[:-1])
-#         print(f"Queries embeds: {queries} and shape {queries.shape}")
-
-#         keys = self.to_key(image_features[:-1])
-#         print(f"Keys embeds: {keys} and shape {keys.shape}")
-
-#         values = self.to_value(image_features[:-1])
-#         print(f"Values embeds: {values} and shape {values.shape}")
-
-#         cross_attn_out = self.attend(queries, keys, values, mask=None)
-#         print(f"Cross attn out: {cross_attn_out} and shape {cross_attn_out.shape}")
-        
-#         return cross_attn_out
-
-
-
-
 import torch
 import torch.nn as nn
-from cross_attn import Attention
+import torch.nn.functional as F
 
 class MultiModalCrossAttention(nn.Module):
-    def __init__(self, dim, heads=8, dropout=0.):
-        super().__init__()
+    """
+    Multi-modal cross attention module for multi-modal (text and image) attention.
+
+    Architecture
+    ------------
+    Timg -> Tllm
+    Tllm -> Timg
+
+    Args:
+    - dim (int): Hidden dimension of the input
+    - num_heads (int): Number of heads for multi-head attention
+    - dropout (float): Dropout probability
+    - qk_norm (bool): Whether to normalize the query and key vectors before computing attention weights
+
+    Methods:
+    - forward(Hllm, Himg): Forward pass of the cross attention module
+    
+
+    Usage
+    -----
+    from cross_attn.main import MultiModalCrossAttention
+
+    dim = 512  # For example
+    num_heads = 8
+    cross_attn = MultiModalCrossAttention(dim, num_heads)
+    Hllm_sample = torch.randn(32, 512, dim)  # Batch size = 32, Sequence length = 10
+    Himg_sample = torch.randn(32, 512, dim)
+    output = cross_attn(Hllm_sample, Himg_sample)
+    print(output)
+
+    print(output.shape)  # Expected: [32, 10, 512]
+    """
+    def __init__(
+        self, 
+        dim, 
+        num_heads,
+        dropout: int = 0.3,
+        qk_norm: bool = True
+    ):
+        super(MultiModalCrossAttention, self).__init__()
         
-        self.dim_head = dim // heads
+        self.num_heads = num_heads
+        self.dim = dim
+        self.dk = dim // num_heads
+        self.qk_norm = qk_norm
+
+        self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(dim)
         
-        # Projection layers for text and image
-        self.text_to_image_projections = nn.ModuleList([
-            nn.Linear(dim, heads * self.dim_head) for _ in range(3)
-        ])
-        self.image_to_text_projections = nn.ModuleList([
-            nn.Linear(dim, heads * self.dim_head) for _ in range(3)
-        ])
+        # Query, Key, Value projection layers for Timg -> Tllm
+        self.Wq = nn.Linear(dim, dim)
+        self.Wk = nn.Linear(dim, dim)
+        self.Wv = nn.Linear(dim, dim)
+        
+        # Query, Key, Value projection layers for Tllm -> Timg (reverse)
+        self.Wq_reverse = nn.Linear(dim, dim)
+        self.Wk_reverse = nn.Linear(dim, dim)
+        self.Wv_reverse = nn.Linear(dim, dim)
 
-        # Attention mechanism
-        self.text_to_image_attn = Attention(dropout=dropout)
-        self.image_to_text_attn = Attention(dropout=dropout)
+        # Output linear layer after attention computation
+        self.linear_out = nn.Linear(2*dim, dim)
 
-    def forward(self, Q_text, K_text, V_text, Q_image, K_image, V_image):
-        Q_text_to_img, K_text_to_img, V_text_to_img = [
-            proj(x) for proj, x in zip(self.text_to_image_projections, [Q_text, K_image, V_image])
-        ]
-        Q_img_to_text, K_img_to_text, V_img_to_text = [
-            proj(x) for proj, x in zip(self.image_to_text_projections, [Q_image, K_text, V_text])
-        ]
+    def forward(self, Hllm, Himg):
+        """
+        Hllm: Hidden states from Tllm
+        Himg: Hidden states from Timg
+        """
+        
+        # Timg -> Tllm
+        Qcross = self.Wq(Hllm)
+        Kcross = self.Wk(Himg)
+        Vcross = self.Wv(Himg)
 
-        Hcross_text = self.text_to_image_attn(Q_text_to_img, K_text_to_img, V_text_to_img)
-        Hcross_image = self.image_to_text_attn(Q_img_to_text, K_img_to_text, V_img_to_text)
+        if self.qk_norm:
+            # Normalize Qcross and Kcross
+            Qcross = self.norm(Qcross)
+            Kcross = self.norm(Kcross)
+        else:
+            pass
 
-        return Hcross_text, Hcross_image
+        
+        # Compute attention weights, why is Kcross being transposed? 
+        # Because we want to multiply the query with the key, and the key has to be transposed
+        # Original code
+        # attn_weights = F.softmax(Qcross @ Kcross.transpose(-2, -1) / torch.sqrt(torch.tensor(self.dk).float()), dim=-1)
+        
+        # New code
+        with torch.backends.cuda.sdp_kernel(enable_math=True):
+            # attention, should Kcross be tranposed here? 
+            attn_weights = F.scaled_dot_product_attention(Qcross, Kcross, Vcross)
+            
+            #dropout
+            attn_weights = self.dropout(attn_weights)
 
-# Usage Example
-dim = 512
-model = MultiModalCrossAttention(dim=dim)
+            #rearrange to original shape
+            # attn_weights = rearrange(out, 'b h n d -> b n (h d)'
 
-# Dummy data for text and image
-B, L_text, L_image, D = 8, 100, 80, dim
-Q_text, K_text, V_text = torch.randn(B, L_text, D), torch.randn(B, L_text, D), torch.randn(B, L_text, D)
-Q_image, K_image, V_image = torch.randn(B, L_image, D), torch.randn(B, L_image, D), torch.randn(B, L_image, D)
+        print(f"attn_weights shape: {attn_weights.shape}, and vcross shape: {Vcross.shape}")
+        
+        # what does the @ symbol mean? 
+        # It's matrix multiplication
+        # https://stackoverflow.com/questions/34142485/difference-between-numpy-dot-and-python-3-5-matrix-multiplication
+        # Hcross = attn_weights @ Vcross
+        # New code
+        # Hcross = attn_weights + Vcross
+        #newest code
+        Hcross = torch.matmul(attn_weights, Vcross)
 
-Hcross_text, Hcross_image = model(Q_text, K_text, V_text, Q_image, K_image, V_image)
+
+
+        # model 2
+        #-----------------------
+        
+        # Tllm -> Timg (Symmetric process)
+        Qcross_reverse = self.Wq_reverse(Himg)
+        Kcross_reverse = self.Wk_reverse(Hllm)
+        Vcross_reverse = self.Wv_reverse(Hllm)
+
+        # attn_weights_reverse = F.softmax(Qcross_reverse @ Kcross_reverse.transpose(-2, -1) / torch.sqrt(torch.tensor(self.dk).float()), dim=-1)
+        with torch.backends.cuda.sdp_kernel(enable_math=True):
+            # attention, should Kcross be tranposed here? 
+            attn_weights_reverse = F.scaled_dot_product_attention(Qcross_reverse, Kcross_reverse, Vcross_reverse)
+            
+            #dropout
+            attn_weights_reverse = self.dropout(attn_weights_reverse)
+
+            #rearrange to original shape
+            # attn_weights_reverse = rearrange(out, 'b h n d -> b n (h d)')
+        
+        #old code
+        # Hcross_reverse = attn_weights_reverse @ Vcross_reverse
+        #new code  
+        # Hcross_reverse = attn_weights_reverse + Vcross_reverse
+        #newest code
+        Hcross_reverse = torch.matmul(attn_weights_reverse, Vcross_reverse)
+        
+        # Concatenate the results
+        output = torch.cat((Hcross, Hcross_reverse), dim=-1)
+        
+        # Pass through linear layer
+        output = self.linear_out(output)
+        
+        return output
+

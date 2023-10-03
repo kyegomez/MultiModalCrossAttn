@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
 
 class MultiModalCrossAttention(nn.Module):
     def __init__(
@@ -9,14 +8,17 @@ class MultiModalCrossAttention(nn.Module):
         dim, 
         num_heads,
         dropout: int = 0.0,
+        qk_norm: bool = True
     ):
         super(MultiModalCrossAttention, self).__init__()
         
         self.num_heads = num_heads
         self.dim = dim
         self.dk = dim // num_heads
+        self.qk_norm = qk_norm
 
         self.dropout = nn.Dropout(dropout)
+        self.norm = nn.LayerNorm(dim)
         
         # Query, Key, Value projection layers for Timg -> Tllm
         self.Wq = nn.Linear(dim, dim)
@@ -41,6 +43,14 @@ class MultiModalCrossAttention(nn.Module):
         Qcross = self.Wq(Hllm)
         Kcross = self.Wk(Himg)
         Vcross = self.Wv(Himg)
+
+        if self.qk_norm:
+            # Normalize Qcross and Kcross
+            Qcross = self.norm(Qcross)
+            Kcross = self.norm(Kcross)
+        else:
+            pass
+
         
         # Compute attention weights, why is Kcross being transposed? 
         # Because we want to multiply the query with the key, and the key has to be transposed
@@ -68,6 +78,11 @@ class MultiModalCrossAttention(nn.Module):
         # Hcross = attn_weights + Vcross
         #newest code
         Hcross = torch.matmul(attn_weights, Vcross)
+
+
+
+        # model 2
+        #-----------------------
         
         # Tllm -> Timg (Symmetric process)
         Qcross_reverse = self.Wq_reverse(Himg)

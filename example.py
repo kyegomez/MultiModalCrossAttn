@@ -1,22 +1,16 @@
 import torch
-from cross_attn.main import MultiModalCrossAttn
+from cross_attn.main import MultiModalCrossAttention
 
+# Test the MultiModalCrossAttention module
+dim = 512  # For example
+num_heads = 8
 
-# Parameters
-BATCH_SIZE = 32  # number of samples in a batch
-SEQ_LEN = 100  # sequence length of both text and image features
-DIM = 512  # dimension of the features
-HEADS = 8  # number of attention heads
-DROPOUT = 0.1  # dropout probability
+cross_attn = MultiModalCrossAttention(dim, num_heads)
 
-# Initialize the module
-cross_attn_module = MultiModalCrossAttn(dim=DIM, heads=HEADS, dropout=DROPOUT)
+Hllm_sample = torch.randn(32, dim, dim)  # Batch size = 32, Sequence length = 10
+Himg_sample = torch.randn(32, dim, dim)
 
-# Generate random inputs
-text_features = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
-image_features = torch.randn(BATCH_SIZE, SEQ_LEN, DIM)
+output = cross_attn(Hllm_sample, Himg_sample)
+print(output)
 
-# Forward pass
-output = cross_attn_module(text_features, image_features)
-
-print(output.shape)  # Expected to be [BATCH_SIZE, SEQ_LEN - 1, DIM]
+print(output.shape)  # Expected: [32, 10, 512]
